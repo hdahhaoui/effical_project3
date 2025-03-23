@@ -154,7 +154,7 @@ def prev_page():
 
 # ----- Page 1 : Informations générales du projet -----
 if st.session_state.page == 1:
-    st.title("Calcul thermique - DTR C3.2-4")
+    st.title("Effical : Solution du Calcul thermique - Selon le DTR C3.2-4")
     st.header("1. Informations Générales du Projet")
     # Saisie des informations de base du projet
     st.text_input("Nom du projet :", key='project_name')
