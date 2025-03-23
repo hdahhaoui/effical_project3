@@ -1,488 +1,616 @@
+# EffiCal - Calcul thermique selon DTR C3.2-4 (Chauffage)
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import io, csv
 
-# Données des matériaux (conductivité en W/m.K, masse volumique en kg/m3)
-materiaux = {
-    "Mortier de chaux": {"conductivite": 0.87, "masse_volumique": 1800},
-    "Carreaux de plâtre pleins": {"conductivite": 1.4, "masse_volumique": 950},
-    "Liège Comprimé": {"conductivite": 0.1, "masse_volumique": 500},
-    "Expansé pur": {"conductivite": 0.044, "masse_volumique": 130},
-    "Verre": {"conductivite": 0.80, "masse_volumique": 1900},
-    "Crépis": {"conductivite": 0.84, "masse_volumique": 3800},
-    "Mortier de ciment": {"conductivite": 1.4, "masse_volumique": 2200},
-    "Lame d'air": {"conductivite": 1.0, "masse_volumique": 1},
-    "Enduit plâtre": {"conductivite": 0.35, "masse_volumique": 1300},
-    "Enduit de ciment": {"conductivite": 0.87, "masse_volumique": 1400},
-    "Béton lourd 1": {"conductivite": 1.75, "masse_volumique": 2350},
-    "Béton plein": {"conductivite": 1.75, "masse_volumique": 2200},
-    "Béton lourd 2": {"conductivite": 1.29, "masse_volumique": 2350},
-    "Brique creuses": {"conductivite": 0.48, "masse_volumique": 900},
-    "Brique pleine 1": {"conductivite": 0.8, "masse_volumique": 1700},
-    "Brique pleine 2": {"conductivite": 1.00, "masse_volumique": 1900},
-    "Brique pleine 3": {"conductivite": 1.10, "masse_volumique": 2000},
-    "Carrelage": {"conductivite": 2.10, "masse_volumique": 1900},
-    "Sable sec": {"conductivite": 0.60, "masse_volumique": 1300},
-    "Gravillon": {"conductivite": 2.0, "masse_volumique": 1500},
-    "Mousse de polyréthane 1": {"conductivite": 0.031, "masse_volumique": 29},
-    "Mousse de polyréthane 2": {"conductivite": 0.034, "masse_volumique": 50},
-    "Laine de roche 1": {"conductivite": 0.047, "masse_volumique": 23},
-    "Laine de roche 2": {"conductivite": 0.041, "masse_volumique": 30},
-    "Laine de roche 3": {"conductivite": 0.038, "masse_volumique": 58},
-    "Laine de verre": {"conductivite": 0.044, "masse_volumique": 9},
-    "Fer pur": {"conductivite": 72.0, "masse_volumique": 7870},
-    "Acier": {"conductivite": 52.0, "masse_volumique": 7780},
-    "Fonte": {"conductivite": 56.0, "masse_volumique": 7500},
-    "Aluminium": {"conductivite": 230.0, "masse_volumique": 2700},
-    "Cuivre": {"conductivite": 380.0, "masse_volumique": 8930},
-    "Plomb": {"conductivite": 35.0, "masse_volumique": 11340}
-}
-
-# Dictionnaire des wilayas et zones climatiques (DTR C3.2-4)
-wilaya = {
-    "1-ADRAR": {"Groupe 1: TINERKOUK, BORDJ BADJI MOKHTAR": "C", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "D"},
-    "2-CHLEF": {"Groupe 1: TENES, OUED GHOUSSINE, SIDI ABDERRAHMANE, SIDI AKKACHA": "A1", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "3-LAGHOUAT": {"Groupe 1: SIDI MAKHLOUF, EL ASSAFIA, LAGHOUAT, AIN MADHI, KSAR EL HIRANE, MEKHAREG, KHENEG, HASSI DHELAA, EL HAOUAITA, HASSI RMEL": "C", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "4-OUM EL BOUAGHI": {"Toutes les communes": "B"},
-    "5-BATNA": {"Groupe 1: METKAOUAK, OULED AMMAR, BARIKA, TILATOU, SEGGANA, BITAM, MDOUKAL, TIGHARGHAR": "C", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "6-BEJAIA": {"Groupe 1: BENI KSILA, TOUDJA, BEJAIA, EL KSEUR, TAOURIRT IGHIL, OUED GHIR, TALA HAMZA": "A1", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "7-BISKRA": {"Groupe 1: KHANGAT SIDI NADJI": "B", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "C"},
-    "8-BECHAR": {"Groupe 1: BENI OUNIF, MOUGHEUL, BOUKAIS, BECHAR, LAHMAR, KENADSA, MERIDJA, TAGHIT, ERG FERRADJ, ABADLA": "C", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "D"},
-    "9-BLIDA": {"Toutes les communes": "A"},
-    "10-BOUIRA": {"Groupe 1: MEZDOUR, BORDJ OUKHRISS, RIDANE, DIRAH, MAAMORA, TAGUEDIT, HADJERA ZERGA": "B", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "11-TAMANRASSET": {"Groupe 1: TAZROUK, TAMANRASSET, ABALESSA, TIN ZAOUATINE, IN GUEZZAM": "C", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "D"},
-    "12-TEBESSA": {"Groupe 1: FERKANE, NEGRINE": "C", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "13-TLEMCEN": {"Groupe 1: AIN TALLOUT, OULED MIMOUN, OUED CHOULY, BENI SEMIEL, TERNI BENI HEDIEL, AIN GHORABA, BENI BOUSSAID, BENI BAHDEL, BENI SNOUS, SEBDOU, AZAILS, EL GOR, SIDI DJILLALI, EL ARICHA, EL BOUIHI": "B", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "14-TIARET": {"Toutes les communes": "B"},
-    "15-TIZI-OUZOU": {"Groupe 1: MIZRANA": "A1", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "16-ALGER": {"Toutes les communes": "A"},
-    "17-DJELFA": {"Groupe 1: BENHAR, AIN OUESSARA, BIRINE, AIN FEKKA, EL KHEMIS, HASSI FDOUL, HAD SAHARY, SIDI LAADJEL, BOUIRA LAHDAB, GUERNINI, HASSI EL EUCH, HASSI BAHBAH, ZAAFRANE, EL GUEDDID, CHAREF, BENI YAGOUB, EL IDRISSIA, DOUIS, AIN CHOUHADA": "B", "Groupe 2: OUM LAADHAM, GUETTARA": "D", "Groupe 3: Toutes les communes autres que celles figurant aux groupes 1 et 2": "C"},
-    "18-JIJEL": {"Toutes les communes": "A"},
-    "19-SETIF": {"Groupe 1: BABOR, AIT TIZI, MZADA, AIN SEBT, SERDJ EL GHOUL, OUED EL BARED, BENI MOUHLI, BOUANDAS, BENI AZIZ, BOUSSELAM, BENI CHEBANA, TALA IFACENE, BENI OUARTILANE, TIZI N'BECHAR, DRAA KEBILA, AIN LAGRADJ, MAOUKLANE, MAAOUIA, DEHAMCHA, AMOUCHA, AIN EL KEBIRA, DJEMILA, HAMMAM GUERGOUR, AIN ROUA, HARBIL, AIN ABESSA, BOUGAA, GUENZET, TASSAMERT, OULED ADDOUANE, BENI FOUDA, EL OURICIA, BENI HOCINE, TACHOUDA": "A", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "20-SAIDA": {"Toutes les communes": "B"},
-    "21-SKIKDA": {"Groupe 1: AIN ZOUIT, FIL FILA, SKIKDA, HAMMADI KROUMA, EL HADAIEK": "A1", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "22-SIDI BEL ABBES": {"Groupe 1: MAKEDRA, AIN EL BERD, BOUDJEBAA EL BORDJ, AIN ADDEN, AIN THRID, SIDI HAMADOUCHE, TESSALA, ZEROUALA, SFISEF, IDI BRAHIM, SEHALA THAOURA, SIDI LAHCENE, SIDI BEL ABBES, MOSTEFA BEN BRAHIM, TILMOUNI, SIDI DAHO, SIDI YACOUB, AIN KADA, BELARBI, AMARNAS, SIDI KHALED, SIDI ALI BOUSSIDI, BOUKANEFIS, LAMTAR, HASSI ZAHANA, BEDRABINE EL MOKRANI": "A", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "23-ANNABA": {"Toutes les communes": "A"},
-    "24-GUELMA": {"Groupe 1: HAMMAM NBAIL, OUED CHEHAM, KHEZARA, OUED ZENATE, DAHOUARA, AIN LARBI, AIN REGGADA, BOUHACHANA, AIN SANDEL, AIN MAKHLOUF, TAMLOUKA": "B", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "25-CONSTANTINE": {"Groupe 1: EL KHROUB, AIN SMARA, AIN ABID, OULED RAHMOUN": "B", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "26-MEDEA": {"Toutes les communes": "B"},
-    "27-MOSTAGANEM": {"Toutes les communes": "A"},
-    "28-MSILA": {"Groupe 1: HAMMAM DHALAA, BENI ILMENE, OUENOUGHA, SIDI AISSA, TARMOUNT, MAADID, BOUTI SAYEH, OULED ADDI GUEBALA, DEHAHNA, MAGRA, BERHOUM, BELAIBA": "B", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "C"},
-    "29-MASCARA": {"Groupe 1: MOCTADOUZ, EL GHOMRI, SIDI ABDELMOUMENE, ALAIMIA, RAS EL AIN AMIROUCHE, SEDJERARA, MOHAMMADIA, OGGAZ, BOUHENNI, EL MENAOUER, SIG, ZAHANA, EL BORDJ, AIN FARES, HACINE, EL MAMOUNIA, FERRAGUIG, SIDI ABDELDJEBAR, SEHAILI, CHORFA, EL GAADA, KHALOUIA, EL GUEITNA, TIGHENNIF, MAOUSSA, MASCARA, EL KEURT, TIZI, BOUHANIFIA": "A", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "30-OUARGLA": {"Groupe 1: EL BORMA": "C", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "D"},
-    "31-ORAN": {"Toutes les communes": "A"},
-    "32-EL BAYADH": {"Groupe 1: BREZINA, EL ABIODH SIDI CHEIKH, EL BNOUD": "C", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "33-ILLIZI": {"Toutes les communes": "C"},
-    "34-BORDJ BOU ARRERIDJ": {"Groupe 1: EL MAIN, DJAAFRA, TAFREG, KHELIL, TESMART, BORDJ ZEMOURA, COLLA, OULED SIDI BRAHIM, OULED DAHMANE, THENIET EL ANSEUR, HARAZA": "A", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "35-BOUMERDES": {"Groupe 1: DELLYS, SIDI DAOUD, AFIR, BEN CHOUD, BAGHLIA, OULED AISSA, TAOURGA": "A1", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "36-EL TARF": {"Groupe 1: EL KALA, BERRIHANE": "A1", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "37-TINDOUF": {"Toutes les communes": "D"},
-    "38-TISSEMSILT": {"Groupe 1: LAZHARIA, LARBAA, BOUCAID, BORDJ EL EMIR ABDELKADER": "A", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "39-EL OUED": {"Groupe 1: OUM TIOUR, EL MGHAIR, SIDI KHELLIL, TENDLA, MRARA, DJAMAA, SIDI AMRANE": "D", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "C"},
-    "40-KHENCHELA": {"Groupe 1: BABAR": "C", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "41-SOUK AHRAS": {"Groupe 1: MECHROHA, AIN ZANA, OULED DRISS": "A", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "B"},
-    "42-TIPAZA": {"Toutes les communes": "A"},
-    "43-MILA": {"Groupe 1: OUED ATHMANIA, BENYAHIA ABDERRAHMANE, OUED SEGUEN, CHELGHOUM LAID, TADJENANET, TELAGHMA, EL MCHIRA, OULED KHELLOUF": "B", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "44-AIN DEFLA": {"Toutes les communes": "A"},
-    "45-NAAMA": {"Toutes les communes": "B"},
-    "46-AIN TEMOUCHENT": {"Groupe 1: SIDI SAFI, BENI SAF, OULHACA EL GHERABA, AIN TOLBA, EL EMIR ABDELKADER": "A1", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"},
-    "47-GHARDAIA": {"Groupe 1: EL GUERRARA, ZELFANA": "D", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "C"},
-    "48-RELIZANE": {"Groupe 1: OUED ESSALEM": "B", "Groupe 2: Toutes les communes autres que celles figurant aux groupes de communes 1": "A"}
-}
-
-# Listes pour types de fenêtres et portes avec coefficients U (W/m².K)
-fenetres_options = {
-    "Simple vitrage": 5.7,
-    "Double vitrage": 2.9,
-    "Double vitrage performant": 1.8,
-    "Triple vitrage": 0.9
-}
-portes_options = {
-    "Porte standard (non isolée)": 3.0,
-    "Porte isolée": 1.5
-}
-
-# Fonction pour obtenir la température extérieure de base (°C) selon zone climatique et altitude (m)
-def get_temperature_exterieure(zone: str, altitude: float) -> float:
-    temp_ranges = {
-        "A": [(300, 3.0), (450, 2.0), (600, 1.0), (800, 0.0), (float('inf'), -1.5)],
-        "A1": [(300, 7.0), (450, 6.0), (600, 5.0), (800, 4.0), (float('inf'), 2.5)],
-        "B": [(450, -2.0), (600, -3.0), (800, -4.0), (float('inf'), -5.5)],
-        "C": [(300, 1.0), (450, 0.0), (600, -1.0), (800, -2.0), (float('inf'), -4.5)],
-        "D": [(300, 4.0), (450, 3.0), (600, 2.0), (800, 1.0), (float('inf'), -0.5)]
-    }
-    if zone not in temp_ranges:
-        return None
-    for (limit, temp) in temp_ranges[zone]:
-        if altitude < limit:
-            return temp
-    # Par défaut, renvoyer la dernière valeur
-    return temp_ranges[zone][-1][1]
-
-# Initialisation de l'état de session pour stocker les données persistantes
-if "current_page" not in st.session_state:
-    st.session_state.current_page = "Informations du projet"
-# Inputs du projet
-for key, default in [("project_name", ""), ("wilaya_selected", None), ("group_selected", None), ("zone", ""), ("altitude", 0.0), ("building_type", ""), ("site", "")]:
-    if key not in st.session_state:
-        st.session_state[key] = default
-# Données des parois définies et couches en cours
-if "parois" not in st.session_state:
-    st.session_state.parois = {}  # dict of {name: {"layers": [(mat, ep), ...], "R": value}}
-if "current_layers" not in st.session_state:
+# Initialisation du session state pour toutes les variables critiques
+if 'page' not in st.session_state:
+    st.session_state.page = 0
+if 'nom_projet' not in st.session_state:
+    st.session_state.nom_projet = ""
+if 'wilaya' not in st.session_state:
+    st.session_state.wilaya = "Sélectionnez wilaya"
+if 'group' not in st.session_state:
+    st.session_state.group = "Sélectionnez groupe"
+if 'zone' not in st.session_state:
+    st.session_state.zone = ""
+if 'altitude' not in st.session_state:
+    st.session_state.altitude = 0.0
+if 'latitude' not in st.session_state:
+    st.session_state.latitude = 0.0
+if 'type_batiment' not in st.session_state:
+    st.session_state.type_batiment = "Sélectionnez..."
+if 'current_layers' not in st.session_state:
     st.session_state.current_layers = []
-if "paroi_name_input" not in st.session_state:
-    st.session_state.paroi_name_input = ""
-# Inputs pour ajout de couche
-if "selected_material" not in st.session_state:
-    st.session_state.selected_material = list(materiaux.keys())[0]
-if "layer_thickness" not in st.session_state:
-    st.session_state.layer_thickness = 0.0
-# Inputs par orientation
-orientation_keys = ["north", "south", "east", "west", "floor", "roof"]
-for ori in orientation_keys:
-    type_key = f"{ori}_wall_type" if ori in ["north", "south", "east", "west"] else f"{ori}_type"
-    area_key = f"{ori}_wall_area" if ori in ["north", "south", "east", "west"] else f"{ori}_area"
-    if type_key not in st.session_state:
-        st.session_state[type_key] = None
-    if area_key not in st.session_state:
-        st.session_state[area_key] = 0.0
-    if ori in ["north", "south", "east", "west"]:
-        if f"{ori}_window_type" not in st.session_state:
-            st.session_state[f"{ori}_window_type"] = list(fenetres_options.keys())[1]  # défaut "Double vitrage"
-        if f"{ori}_window_area" not in st.session_state:
-            st.session_state[f"{ori}_window_area"] = 0.0
-        if f"{ori}_door_type" not in st.session_state:
-            st.session_state[f"{ori}_door_type"] = list(portes_options.keys())[0]
-        if f"{ori}_door_area" not in st.session_state:
-            st.session_state[f"{ori}_door_area"] = 0.0
+if 'walls' not in st.session_state:
+    st.session_state.walls = {}
+if 'selected_material_name' not in st.session_state:
+    st.session_state.selected_material_name = ""
+if 'input_thickness' not in st.session_state:
+    st.session_state.input_thickness = 0.0
+if 'selected_layer_index' not in st.session_state:
+    st.session_state.selected_layer_index = 0
+if 'edit_thickness' not in st.session_state:
+    st.session_state.edit_thickness = 0.0
+if 'volume' not in st.session_state:
+    st.session_state.volume = 0.0
+if 'infiltration_entries' not in st.session_state:
+    st.session_state.infiltration_entries = []
+if 'infiltration_number' not in st.session_state:
+    st.session_state.infiltration_number = 0
+if 'infiltration_surface' not in st.session_state:
+    st.session_state.infiltration_surface = 0.0
+if 'infiltration_type' not in st.session_state:
+    st.session_state.infiltration_type = "Fenêtre ou porte-fenêtre"
 
-# Barre latérale de navigation
-pages = ["Informations du projet", "Définition des parois", "Configuration par orientation", "Résultats"]
-st.sidebar.title("Menu")
-st.sidebar.radio("Pages", pages, index=pages.index(st.session_state.current_page), key="current_page")
+# Préparation des clés pour chaque orientation et éléments associés
+orientations = [
+    ("Nord", "nord"), ("Nord-Est", "nord_est"), ("Est", "est"), ("Sud-Est", "sud_est"),
+    ("Sud", "sud"), ("Sud-Ouest", "sud_ouest"), ("Ouest", "ouest"), ("Nord-Ouest", "nord_ouest"),
+    ("Plancher bas (sol)", "plancher_bas"), ("Plafond/Terrasse", "plancher_terrasse")
+]
+for label, key in orientations:
+    if f"use_{key}" not in st.session_state:
+        st.session_state[f"use_{key}"] = False
+    if f"{key}_wall" not in st.session_state:
+        st.session_state[f"{key}_wall"] = "(choisir)"
+    if f"homogeneous_{key}" not in st.session_state:
+        st.session_state[f"homogeneous_{key}"] = False
+    if f"area_wall_{key}" not in st.session_state:
+        st.session_state[f"area_wall_{key}"] = 0.0
+    if f"area_window_{key}" not in st.session_state:
+        st.session_state[f"area_window_{key}"] = 0.0
+    if f"area_door_{key}" not in st.session_state:
+        st.session_state[f"area_door_{key}"] = 0.0
+    if f"window_type_{key}" not in st.session_state:
+        st.session_state[f"window_type_{key}"] = "(choisir type)"
+    if f"window_material_{key}" not in st.session_state:
+        st.session_state[f"window_material_{key}"] = "(choisir matériau)"
+    if f"window_gap_{key}" not in st.session_state:
+        st.session_state[f"window_gap_{key}"] = "(choisir écart air)"
+    if f"door_contact_{key}" not in st.session_state:
+        st.session_state[f"door_contact_{key}"] = "(choisir contact)"
+    if f"door_type_{key}" not in st.session_state:
+        st.session_state[f"door_type_{key}"] = "(choisir type de porte)"
 
-# Affichage de la page correspondant à st.session_state.current_page
-if st.session_state.current_page == "Informations du projet":
-    st.title("Informations du projet")
-    st.text_input("Nom du projet", key="project_name")
-    # Sélection de la wilaya et détermination de la zone climatique
-    wilaya_list = list(wilaya.keys())
-    wilaya_list.sort(key=lambda x: int(x.split('-')[0]))
-    chosen_wilaya = st.selectbox("Wilaya", wilaya_list, key="wilaya_selected")
-    if chosen_wilaya:
-        groupe_dict = wilaya[chosen_wilaya]
-        if len(groupe_dict) == 1:
-            # Une seule zone (Toutes les communes)
-            zone_val = list(groupe_dict.values())[0]
+# Clés pour un mur vers local non chauffé
+if 'use_local_nc' not in st.session_state:
+    st.session_state.use_local_nc = False
+if 'wall_local_nc' not in st.session_state:
+    st.session_state.wall_local_nc = "(choisir)"
+if 'area_local_nc' not in st.session_state:
+    st.session_state.area_local_nc = 0.0
+if 'Tint_local_nc' not in st.session_state:
+    st.session_state.Tint_local_nc = 20.0
+if 'Tesp_local_nc' not in st.session_state:
+    st.session_state.Tesp_local_nc = 0.0
+if 'Text_local_nc' not in st.session_state:
+    st.session_state.Text_local_nc = 0.0
+
+# Clé pour température intérieure de calcul (final)
+if 'temperature_int' not in st.session_state:
+    st.session_state.temperature_int = 20.0
+
+# Dictionnaire Wilaya -> Groupes -> Zone climatique (abrégé pour exemple)
+wilaya_dict = {
+    "1-ADRAR": {
+        "Groupe 1: TINERKOUK, BORDJ BADJI MOKHTAR": "C",
+        "Groupe 2: Toutes les autres communes": "D"
+    },
+    "2-CHLEF": {
+        "Groupe 1: TENES, OUED GHOUSSINE, SIDI ABDERRAHMANE, SIDI AKKACHA": "A1",
+        "Groupe 2: Toutes les autres communes": "A"
+    },
+    # ... (les autres wilayas et groupes seraient ajoutés ici)
+}
+
+# Base de données des matériaux (conductivité en W/m.K, masse volumique en kg/m³)
+materiaux = {
+    "Mortier de chaux": {"conductivite": 0.87, "masse volumique": 1800},
+    "Carreaux de plâtre pleins": {"conductivite": 1.4, "masse volumique": 950},
+    "Liège Comprimé": {"conductivite": 0.10, "masse volumique": 500},
+    "Polystyrène expansé": {"conductivite": 0.044, "masse volumique": 30},
+    "Brique creuse": {"conductivite": 0.48, "masse volumique": 900},
+    "Brique pleine": {"conductivite": 0.80, "masse volumique": 1700},
+    "Béton (plein)": {"conductivite": 1.75, "masse volumique": 2200},
+    "Laine de verre": {"conductivite": 0.044, "masse volumique": 9},
+    "Acier": {"conductivite": 52.0, "masse volumique": 7780},
+    # ... (autres matériaux)
+}
+
+# Fonctions utilitaires de calcul
+def get_temperature_ext(zone, altitude):
+    """Température extérieure de base selon zone climatique et altitude (DTR C3.2-4)."""
+    temp_ranges = {
+        "A": [(300, 3), (450, 2), (600, 1), (800, 0), (float('inf'), -1.5)],
+        "A1": [(300, 7), (450, 6), (600, 5), (800, 4), (float('inf'), 2.5)],
+        "B": [(450, -2), (600, -3), (800, -4), (float('inf'), -5.5)],
+        "C": [(300, 1), (450, 0), (600, -1), (800, -2), (float('inf'), -4.5)],
+        "D": [(300, 4), (450, 3), (600, 2), (800, 1), (float('inf'), -0.5)]
+    }
+    if zone in temp_ranges:
+        for limit, temp in temp_ranges[zone]:
+            if altitude < limit:
+                return temp
+    return None
+
+def calculate_wall_properties(layers, contact_type, position_type):
+    """Calcule la résistance thermique totale (avec Rsi/Rse) et la masse surfacique d'une paroi."""
+    R = 0.0
+    M = 0.0
+    for mat_name, ep in layers:
+        if mat_name in materiaux:
+            k = materiaux[mat_name]["conductivite"]
+            rho = materiaux[mat_name]["masse volumique"]
+            if k > 0:
+                R += ep / k
+            M += rho * ep
+    # Coefficients de convection internes/externes (hivers) selon position/contact
+    hi = he = 0.0
+    if contact_type == "Exterieur":
+        if position_type == "Lateral":      # mur vertical
+            hi, he = 0.11, 0.06
+        elif position_type == "Ascendant":  # toiture (inclinaison <= 60°)
+            hi, he = 0.09, 0.05
+        elif position_type == "Descendant": # plancher sur local ouvert
+            hi, he = 0.17, 0.05
+    elif contact_type == "Local":  # Local chauffé ou non chauffé
+        if position_type == "Lateral":
+            hi = he = 0.11
+        elif position_type == "Ascendant":
+            hi = he = 0.09
+        elif position_type == "Descendant":
+            hi = he = 0.17  # (local en dessous, même convection des deux côtés)
+    # Résistance totale incluant les films d'air int/ext
+    R_total = R + (1/hi if hi else 0) + (1/he if he else 0)
+    return R_total, M
+
+def get_k_door(contact, door_type):
+    """Retourne le coefficient K d'une porte (W/m².K) selon son contact et son type."""
+    if not contact or not door_type:
+        return None
+    c = contact.lower()
+    d = door_type.lower()
+    if "exterieur" in c or "extérieur" in c:
+        if "bois" in d and "vitrage" not in d:
+            return 3.5  # Porte pleine bois ext.
+        if "metal" in d and "vitrage" not in d:
+            return 5.8  # Porte pleine métal ext.
+        if "vitrage <30" in d:
+            return 4.0  # Porte bois <30% vitrage ext.
+        if "vitrage entre 30" in d:
+            return 4.5  # Porte bois 30-60% vitrage ext.
+        if "vitrage simple" in d:
+            return 5.8  # Porte métal avec vitrage simple ext.
+    elif "non chauffé" in c or "non chauffe" in c:
+        if "bois" in d and "vitrage" not in d:
+            return 2.0  # Porte pleine bois vers local non chauffé
+        if "metal" in d and "vitrage" not in d:
+            return 4.5  # Porte pleine métal vers LNC
+        if "vitrage <30" in d:
+            return 2.4  # Porte bois <30% vitrage vers LNC
+        if "vitrage entre 30" in d:
+            return 2.7  # Porte bois 30-60% vitrage vers LNC
+        if "vitrage simple" in d:
+            return 4.5  # Porte métal + vitrage simple vers LNC
+    return None
+
+def get_k_window(win_type, frame_material, gap_option):
+    """Retourne le coefficient de base d'une fenêtre (sans Rse/Rsi supplémentaires)."""
+    if not win_type or not frame_material:
+        return None
+    t = win_type.lower()
+    mat = frame_material.lower()
+    if t == "simple":
+        return 5.0 if mat == "bois" else 5.8
+    elif t == "double":
+        if not gap_option:
+            return None
+        g = gap_option.lower()
+        # Cas particulier : "cas de fenetre double" sélectionné par erreur dans les intercalaires
+        if "fenetre double" in g:
+            return 2.6 if mat == "bois" else 3.0
+        if mat == "bois":
+            if "5 à 7" in g:
+                return 3.3
+            elif "8 à 9" in g:
+                return 3.1
+            elif "10 à 11" in g:
+                return 3.0
+            elif "12 à 13" in g:
+                return 2.9
+        else:  # métal
+            if "5 à 7" in g:
+                return 4.0
+            elif "8 à 9" in g:
+                return 3.9
+            elif "10 à 11" in g:
+                return 3.8
+            elif "12 à 13" in g:
+                return 3.7
+    elif t == "fenetre double":  # fenêtre double (double châssis)
+        return 2.6 if mat == "bois" else 3.0
+    return None
+
+# Rendu de l'interface multi-pages
+page = st.session_state.page
+
+# ---- Page 0: Informations du projet ----
+if page == 0:
+    st.title("EffiCal – Calcul thermique (DTR C3.2-4)")
+    st.header("1. Informations du projet")
+    st.text_input("Nom du Projet", key="nom_projet")
+    # Sélection de la wilaya
+    wilaya_options = ["Sélectionnez wilaya"] + list(wilaya_dict.keys())
+    st.selectbox("Wilaya", options=wilaya_options, key="wilaya")
+    # Sélection du groupe de communes (dépend de la wilaya)
+    if st.session_state.wilaya in wilaya_dict:
+        group_options = ["Sélectionnez groupe"] + list(wilaya_dict[st.session_state.wilaya].keys())
+        st.selectbox("Groupe de communes", options=group_options, key="group")
+        if st.session_state.group in wilaya_dict[st.session_state.wilaya]:
+            # Détermination de la zone climatique automatiquement
+            zone_val = wilaya_dict[st.session_state.wilaya][st.session_state.group]
             st.session_state.zone = zone_val
-            st.text_input("Zone climatique", value=zone_val, key="zone", disabled=True)
+            st.text_input("Zone climatique", value=zone_val, disabled=True)
         else:
-            chosen_groupe = st.selectbox("Groupe de communes", list(groupe_dict.keys()), key="group_selected")
-            if chosen_groupe:
-                st.session_state.zone = groupe_dict[chosen_groupe]
-                st.text_input("Zone climatique", value=st.session_state.zone, key="zone", disabled=True)
-    st.number_input("Altitude du site (m)", min_value=0.0, key="altitude")
-    building_types = ["Logement individuel", "Logement en immeuble collectif / Bureaux / Hébergement"]
-    st.selectbox("Type de bâtiment", building_types, key="building_type")
-    site_choices = ["Centre des grandes villes", "Zones urbaines / industrielles / forêts", "Zones rurales arborées (haies, forêts clairsemées)", "Rase campagne / Aéroport", "Bord de mer"]
-    st.selectbox("Site d'implantation", site_choices, key="site")
-    col1, col2 = st.columns([1,1])
-    with col1:
-        st.button("Retour", disabled=True)
-    with col2:
-        if st.button("Suivant"):
-            st.session_state.current_page = "Définition des parois"
+            st.session_state.zone = ""
+    else:
+        st.session_state.group = "Sélectionnez groupe"
+        st.session_state.zone = ""
+    # Altitude et latitude du site
+    st.number_input("Altitude (m)", min_value=0.0, value=st.session_state.altitude, step=1.0, key="altitude")
+    st.number_input("Latitude (°)", min_value=0.0, value=st.session_state.latitude, step=0.1, key="latitude")
+    # Type de bâtiment
+    type_options = ["Sélectionnez...", "Logement individuel", "Logement collectif/bureaux"]
+    st.selectbox("Type de bâtiment", options=type_options, key="type_batiment")
+    # Bouton Suivant avec validations
+    if st.button("Suivant"):
+        erreurs = []
+        if st.session_state.wilaya == "Sélectionnez wilaya" or st.session_state.group == "Sélectionnez groupe":
+            erreurs.append("Veuillez sélectionner la *wilaya* et le *groupe de communes*.")
+        if st.session_state.zone == "":
+            erreurs.append("La zone climatique n'est pas déterminée.")
+        try:
+            alt_val = float(st.session_state.altitude)
+            if alt_val <= 0:
+                erreurs.append("Altitude doit être un nombre positif.")
+        except:
+            erreurs.append("Veuillez renseigner une altitude valide.")
+        try:
+            lat_val = float(st.session_state.latitude)
+            if lat_val <= 0:
+                erreurs.append("Latitude doit être un nombre positif.")
+        except:
+            erreurs.append("Veuillez renseigner une latitude valide.")
+        if st.session_state.type_batiment == "Sélectionnez...":
+            erreurs.append("Veuillez choisir le type de bâtiment.")
+        if erreurs:
+            for e in erreurs:
+                st.error(e)
+        else:
+            st.session_state.page = 1
 
-elif st.session_state.current_page == "Définition des parois":
-    st.title("Définition des parois")
-    st.markdown("Ajoutez ici les différents types de parois opaques (murs, plancher bas, toiture) avec leur composition en couches.")
-    st.subheader("Nouvelle paroi")
-    st.text_input("Nom de la paroi", key="paroi_name_input")
-    st.selectbox("Matériau (couche à ajouter)", list(materiaux.keys()), key="selected_material")
-    st.number_input("Épaisseur de la couche (m)", min_value=0.0, step=0.01, key="layer_thickness")
-    add_col, list_col = st.columns([1, 3])
-    with add_col:
-        if st.button("Ajouter la couche"):
-            mat = st.session_state.selected_material
-            ep = st.session_state.layer_thickness
-            if mat and ep and ep > 0:
-                st.session_state.current_layers.append((mat, ep))
-            else:
-                st.warning("Veuillez sélectionner un matériau et une épaisseur valide.")
-    with list_col:
-        if st.session_state.current_layers:
-            st.markdown("**Couches de la paroi en cours :**")
-            total_R = 0.0
-            for i, (mat, ep) in enumerate(st.session_state.current_layers):
-                k_value = materiaux[mat]["conductivite"]
-                R_layer = ep / k_value if k_value != 0 else 0.0
-                total_R += R_layer
-                layer_col1, layer_col2 = st.columns([4, 1])
-                layer_col1.write(f"- {mat} : {ep:.3f} m (R = {R_layer:.3f} m²·K/W)")
-                if layer_col2.button("❌", key=f"remove_layer_{i}"):
-                    st.session_state.current_layers.pop(i)
-                    break
-            if total_R > 0:
-                st.write(f"**R total (sans résistances superficielles)** = {total_R:.3f} m²·K/W")
-    if st.button("Enregistrer la paroi"):
-        name = st.session_state.paroi_name_input.strip()
+# ---- Page 1: Définition des parois ----
+if page == 1:
+    st.header("2. Définition des parois (composition des murs)")
+    # Formulaire d'ajout d'une nouvelle paroi
+    st.subheader("Ajouter une nouvelle paroi")
+    st.text_input("Nom de la paroi", key="wall_name_input")
+    st.radio("Position de la paroi", ["Lateral (Mur) α>60", "Ascendant (Toiture) α<=60", "Descendant (Plancher)"], key="position_wall")
+    st.radio("En contact avec", ["Exterieur / espace ouvert", "Local (non chauffé ou chauffé)"], key="contact_type")
+    # Recherche et sélection de matériaux
+    search = st.text_input("Rechercher un matériau")
+    mat_list = [m for m in materiaux if search.lower() in m.lower()] if search else list(materiaux.keys())
+    selected_mat = st.selectbox("Matériau", options=mat_list, key="selected_material_name")
+    if selected_mat:
+        info = materiaux[selected_mat]
+        st.write(f"λ = {info['conductivite']} W/m·K, ρ = {info['masse volumique']} kg/m³")
+    st.number_input("Épaisseur de la couche (m)", min_value=0.0, step=0.001, format="%.3f", key="input_thickness")
+    if st.button("Ajouter cette couche"):
+        if selected_mat and st.session_state.input_thickness > 0:
+            st.session_state.current_layers.append((selected_mat, st.session_state.input_thickness))
+            st.session_state.input_thickness = 0.0  # réinitialiser l'épaisseur saisie
+        else:
+            st.error("Veuillez sélectionner un matériau et une épaisseur positive.")
+    # Affichage des couches actuelles de la paroi en cours de création
+    if st.session_state.current_layers:
+        st.markdown("*Composition actuelle* :")
+        for i, (mat, ep) in enumerate(st.session_state.current_layers, start=1):
+            st.write(f"{i}. **{mat}** – {ep:.3f} m")
+        # Options de modification/suppression d'une couche ajoutée
+        idx_options = list(range(len(st.session_state.current_layers)))
+        idx_select = st.selectbox("Sélectionner une couche à modifier", options=idx_options, format_func=lambda i: f"{i+1}. {st.session_state.current_layers[i][0]}")
+        st.number_input("Nouvelle épaisseur (m) pour la couche sélectionnée", min_value=0.0,
+                        value=st.session_state.current_layers[idx_select][1], step=0.001, format="%.3f", key="edit_thickness")
+        col1, col2 = st.columns(2)
+        if col1.button("Mettre à jour épaisseur"):
+            if st.session_state.edit_thickness > 0:
+                mat_name = st.session_state.current_layers[idx_select][0]
+                st.session_state.current_layers[idx_select] = (mat_name, st.session_state.edit_thickness)
+        if col2.button("Supprimer cette couche"):
+            st.session_state.current_layers.pop(idx_select)
+    # Validation et ajout de la paroi complète
+    if st.button("Ajouter la paroi aux éléments du projet"):
+        name = st.session_state.wall_name_input.strip()
         if not name:
-            st.error("Veuillez saisir un nom pour la paroi.")
-        elif name in st.session_state.parois:
-            st.error(f"Le paroi '{name}' existe déjà.")
+            st.error("Veuillez donner un nom à cette paroi.")
+        elif name in st.session_state.walls:
+            st.error(f"Une paroi nommée **{name}** existe déjà.")
         elif not st.session_state.current_layers:
-            st.error("Aucune couche définie pour cette paroi.")
+            st.error("Ajoutez au moins une couche de matériau à la paroi.")
         else:
-            R_layers = 0.0
-            for mat, ep in st.session_state.current_layers:
-                k = materiaux[mat]["conductivite"]
-                if k != 0:
-                    R_layers += ep / k
-            st.session_state.parois[name] = {"layers": list(st.session_state.current_layers), "R": R_layers}
-            st.success(f"Paroi '{name}' ajoutée.")
+            # Détermine le type de contact et position pour le calcul
+            contact = "Exterieur" if st.session_state.contact_type.startswith("Exterieur") else "Local"
+            pos = "Lateral"
+            if st.session_state.position_wall.startswith("Ascendant"):
+                pos = "Ascendant"
+            elif st.session_state.position_wall.startswith("Descendant"):
+                pos = "Descendant"
+            # Calcule la résistance et la masse surfacique
+            R_total, M_total = calculate_wall_properties(st.session_state.current_layers, contact, pos)
+            U_hiver = 1 / R_total if R_total != 0 else 0.0
+            # Enregistre la paroi
+            st.session_state.walls[name] = {'R': R_total, 'mass': M_total, 'U': U_hiver}
+            st.success(f"Paroi **{name}** ajoutée – U = {U_hiver:.3f} W/m²K, masse = {M_total:.1f} kg/m²")
+            # Réinitialise le formulaire pour une éventuelle paroi suivante
+            st.session_state.wall_name_input = ""
+            st.session_state.position_wall = "Lateral (Mur) α>60"
+            st.session_state.contact_type = "Exterieur / espace ouvert"
             st.session_state.current_layers = []
-            st.session_state.paroi_name_input = ""
-    if st.session_state.parois:
-        st.subheader("Parois définies")
-        for pname, pdata in st.session_state.parois.items():
-            R_val = pdata["R"]
-            U_val = 1.0 / (R_val + 0.17) if R_val > 0 else 0.0
-            comp_str = " + ".join([f"{mat} ({ep:.3f} m)" for mat, ep in pdata["layers"]])
-            st.write(f"**{pname}** – R = {R_val:.3f} m²·K/W, U ≈ {U_val:.3f} W/m²·K. Composition : {comp_str}")
-            if st.button(f"Supprimer {pname}", key=f"delete_paroi_{pname}"):
-                del st.session_state.parois[pname]
-                st.experimental_rerun()
-    col1, col2 = st.columns([1,1])
-    with col1:
-        if st.button("Retour"):
-            st.session_state.current_page = "Informations du projet"
-    with col2:
-        if st.button("Suivant"):
-            if not st.session_state.parois:
-                st.warning("Veuillez définir au moins une paroi avant de continuer.")
+    # Tableau des parois déjà créées
+    if st.session_state.walls:
+        st.subheader("Parois créées")
+        df_walls = pd.DataFrame([
+            {"Paroi": nom, "U (W/m²·K)": props["U"], "Masse (kg/m²)": props["mass"]}
+            for nom, props in st.session_state.walls.items()
+        ])
+        st.table(df_walls.style.format({"U (W/m²·K)": "{:.3f}", "Masse (kg/m²)": "{:.1f}"}))
+        # Suppression d'une paroi existante si besoin
+        wall_names = list(st.session_state.walls.keys())
+        choix_suppr = st.selectbox("Supprimer une paroi", options=[""] + wall_names)
+        if st.button("Supprimer la paroi sélectionnée"):
+            if choix_suppr in st.session_state.walls:
+                del st.session_state.walls[choix_suppr]
+                st.info(f"Paroi **{choix_suppr}** supprimée.")
+    # Boutons de navigation
+    col_prev, col_next = st.columns([1, 1])
+    if col_prev.button("← Retour"):
+        st.session_state.page = 0
+    if col_next.button("Suivant →"):
+        if not st.session_state.walls:
+            st.error("Définissez au moins une paroi avant de continuer.")
+        else:
+            st.session_state.page = 2
+
+# ---- Page 2: Saisie des surfaces par orientation ----
+if page == 2:
+    st.header("3. Surfaces et ouvertures par orientation")
+    st.write("Cochez les orientations présentes et renseignez les surfaces correspondantes :")
+    for label, key in orientations:
+        if key in ["plancher_bas", "plancher_terrasse"]:  # cas du plancher bas / toit
+            st.checkbox(f"{label} ?", key=f"use_{key}")
+            if st.session_state[f"use_{key}"]:
+                st.selectbox(f"Paroi utilisée pour {label}", options=["(choisir)"] + list(st.session_state.walls.keys()), key=f"{key}_wall")
+                st.number_input(f"Surface {label} (m²)", min_value=0.0, step=0.1, key=f"area_wall_{key}")
+        else:
+            st.checkbox(f"Mur {label} ?", key=f"use_{key}")
+            if st.session_state[f"use_{key}"]:
+                st.selectbox(f"Paroi pour {label}", options=["(choisir)"] + list(st.session_state.walls.keys()), key=f"{key}_wall")
+                st.checkbox("Mur homogène (sans ouvertures)", key=f"homogeneous_{key}")
+                if st.session_state[f"homogeneous_{key}"]:
+                    st.number_input(f"Surface du mur {label} (m²)", min_value=0.0, step=0.1, key=f"area_wall_{key}")
+                else:
+                    st.number_input(f"Surface du mur {label} (m²)", min_value=0.0, step=0.1, key=f"area_wall_{key}")
+                    st.number_input(f"Surface des fenêtres {label} (m²)", min_value=0.0, step=0.1, key=f"area_window_{key}")
+                    st.selectbox("Type de vitrage", options=["(choisir type)", "Simple", "Double", "Fenetre double"], key=f"window_type_{key}")
+                    st.selectbox("Matériau de la fenêtre", options=["(choisir matériau)", "Bois", "Metal"], key=f"window_material_{key}")
+                    if st.session_state[f"window_type_{key}"] == "Double":
+                        st.selectbox("Épaisseur de la lame d'air", 
+                                     options=["(choisir écart air)", "5 à 7", "8 à 9", "10 à 11", "12 à 13", "cas de fenetre double"],
+                                     key=f"window_gap_{key}")
+                    st.number_input(f"Surface des portes {label} (m²)", min_value=0.0, step=0.1, key=f"area_door_{key}")
+                    if st.session_state[f"area_door_{key}"] > 0:
+                        st.selectbox("Contact de la porte", options=["(choisir contact)", "Exterieur", "Local Non Chauffé"], key=f"door_contact_{key}")
+                        st.selectbox("Type de porte", options=[
+                            "(choisir type de porte)", "Portes Opaques en Bois", "Portes Opaques en Metal", 
+                            "Portes en Bois avec une proportion de vitrage <30%", 
+                            "Portes en Bois avec une proportion de vitrage entre 30% et 60%", 
+                            "Portes en Metal équipées de vitrage simple"
+                        ], key=f"door_type_{key}")
+    # Section pour un local non chauffé attenant
+    st.subheader("Local non chauffé attenant")
+    st.checkbox("Présence d'un mur vers un local non chauffé ?", key="use_local_nc")
+    if st.session_state.use_local_nc:
+        st.selectbox("Paroi séparant le local non chauffé", options=["(choisir)"] + list(st.session_state.walls.keys()), key="wall_local_nc")
+        st.number_input("Surface de cette paroi (m²)", min_value=0.0, step=0.1, key="area_local_nc")
+        st.number_input("Température intérieure (°C)", value=st.session_state.Tint_local_nc, key="Tint_local_nc")
+        # Température extérieure de référence (calculée automatiquement d'après la zone)
+        if st.session_state.zone and (st.session_state.Text_local_nc == 0 or st.session_state.Text_local_nc is None):
+            st.session_state.Text_local_nc = get_temperature_ext(st.session_state.zone, float(st.session_state.altitude))
+        st.number_input("Température extérieure (°C)", value=st.session_state.Text_local_nc if st.session_state.Text_local_nc is not None else 0.0, key="Text_local_nc")
+        st.number_input("Température dans le local non chauffé (°C)", value=st.session_state.Tesp_local_nc, key="Tesp_local_nc")
+    # Boutons de navigation avec validations
+    col_prev, col_next = st.columns([1, 1])
+    if col_prev.button("← Retour"):
+        st.session_state.page = 1
+    if col_next.button("Suivant →"):
+        erreurs = []
+        for label, key in orientations:
+            if st.session_state.get(f"use_{key}"):
+                if st.session_state.get(f"{key}_wall") in [None, "", "(choisir)"]:
+                    erreurs.append(f"Choisissez une paroi pour **{label}**.")
+                if key not in ["plancher_bas", "plancher_terrasse"]:
+                    if st.session_state.get(f"homogeneous_{key}", False):
+                        if st.session_state.get(f"area_wall_{key}", 0.0) <= 0:
+                            erreurs.append(f"Surface du mur **{label}** manquante.")
+                    else:
+                        wall_area = st.session_state.get(f"area_wall_{key}", 0.0)
+                        if wall_area <= 0:
+                            erreurs.append(f"Surface du mur **{label}** invalide.")
+                        win_area = st.session_state.get(f"area_window_{key}", 0.0)
+                        if win_area > 0:
+                            if st.session_state.get(f"window_type_{key}") in [None, "", "(choisir type)"] \
+                               or st.session_state.get(f"window_material_{key}") in [None, "", "(choisir matériau)"]:
+                                erreurs.append(f"Précisez le **type de vitrage** et le **matériau** de la fenêtre ({label}).")
+                            if st.session_state.get(f"window_type_{key}") == "Double" and \
+                               st.session_state.get(f"window_gap_{key}") in [None, "", "(choisir écart air)"]:
+                                erreurs.append(f"Précisez l'**épaisseur d'air** pour le vitrage double ({label}).")
+                        door_area = st.session_state.get(f"area_door_{key}", 0.0)
+                        if door_area > 0:
+                            if st.session_state.get(f"door_contact_{key}") in [None, "", "(choisir contact)"] or \
+                               st.session_state.get(f"door_type_{key}") in [None, "", "(choisir type de porte)"]:
+                                erreurs.append(f"Précisez le **type de porte** pour {label}.")
+        if st.session_state.use_local_nc:
+            if st.session_state.wall_local_nc in [None, "", "(choisir)"]:
+                erreurs.append("Choisissez la paroi pour le local non chauffé.")
+            if st.session_state.area_local_nc <= 0:
+                erreurs.append("Surface du mur local non chauffé invalide.")
+        if erreurs:
+            for e in erreurs:
+                st.error(e)
+        else:
+            st.session_state.page = 3
+
+# ---- Page 3: Renouvellement d'air (infiltrations) ----
+if page == 3:
+    st.header("4. Déperditions par renouvellement d'air")
+    st.number_input("Volume chauffé du bâtiment (m³)", min_value=0.0, step=1.0, key="volume")
+    st.markdown("*Ajoutez les ouvertures contribuant aux infiltrations (facultatif)* :")
+    P0_vals = {"Fenêtre ou porte-fenêtre": 4.0, "Porte avec seuil et joint": 1.2, "Porte": 6.0, "Double fenêtre": 2.4}
+    inf_options = list(P0_vals.keys())
+    st.selectbox("Type d'ouverture", options=inf_options, key="infiltration_type")
+    st.number_input("Nombre d'éléments", min_value=0, step=1, key="infiltration_number")
+    st.number_input("Surface totale de ces éléments (m²)", min_value=0.0, step=0.1, key="infiltration_surface")
+    if st.button("Ajouter cette ouverture"):
+        if st.session_state.infiltration_number > 0 and st.session_state.infiltration_surface > 0:
+            st.session_state.infiltration_entries.append((
+                st.session_state.infiltration_type,
+                st.session_state.infiltration_number,
+                st.session_state.infiltration_surface
+            ))
+            st.session_state.infiltration_number = 0
+            st.session_state.infiltration_surface = 0.0
+        else:
+            st.error("Veuillez indiquer un nombre et une surface valides.")
+    if st.session_state.infiltration_entries:
+        st.text_area("Ouvertures ajoutées :", 
+                     "\n".join(f"{n}× {typ}, {surf} m²" for typ, n, surf in st.session_state.infiltration_entries), 
+                     height=100)
+    # Boutons de navigation
+    col_prev, col_next = st.columns([1, 1])
+    if col_prev.button("← Retour"):
+        st.session_state.page = 2
+    if col_next.button("Calculer →"):
+        if st.session_state.volume <= 0:
+            st.error("Veuillez renseigner le volume chauffé.")
+        else:
+            st.session_state.page = 4
+
+# ---- Page 4: Résultats finaux ----
+if page == 4:
+    st.header("5. Résultats des déperditions thermiques")
+    # Calcul des déperditions par transmission pour chaque orientation
+    resultats = []
+    total_transmissions = 0.0
+    for label, key in orientations:
+        if st.session_state.get(f"use_{key}"):
+            nom_paroi = st.session_state.get(f"{key}_wall")
+            if not nom_paroi or nom_paroi == "(choisir)":
+                continue
+            U_wall = st.session_state.walls[nom_paroi]['U'] if nom_paroi in st.session_state.walls else 0.0
+            if key in ["plancher_bas", "plancher_terrasse"]:
+                # Plancher bas / Toiture : toujours homogène, pas d'ouvertures
+                area = st.session_state.get(f"area_wall_{key}", 0.0)
+                perte = U_wall * area
+                resultats.append({"Élément": label, "Déperdition (W/°C)": perte})
+                total_transmissions += perte
             else:
-                st.session_state.current_page = "Configuration par orientation"
-
-elif st.session_state.current_page == "Configuration par orientation":
-    st.title("Configuration par orientation")
-    if not st.session_state.parois:
-        st.error("Veuillez d'abord définir des parois dans l'étape précédente.")
+                if st.session_state.get(f"homogeneous_{key}", False):
+                    area = st.session_state.get(f"area_wall_{key}", 0.0)
+                    perte = U_wall * area
+                    resultats.append({"Élément": label, "Déperdition (W/°C)": perte})
+                    total_transmissions += perte
+                else:
+                    # Partie opaque du mur
+                    wall_area = st.session_state.get(f"area_wall_{key}", 0.0)
+                    perte_mur = U_wall * wall_area
+                    # Fenêtres
+                    perte_fen = 0.0
+                    fen_area = st.session_state.get(f"area_window_{key}", 0.0)
+                    if fen_area and fen_area > 0:
+                        type_fen = st.session_state.get(f"window_type_{key}")
+                        mat_fen = st.session_state.get(f"window_material_{key}")
+                        gap = st.session_state.get(f"window_gap_{key}") if type_fen == "Double" else None
+                        k_fen_base = get_k_window(type_fen, mat_fen, gap)
+                        if k_fen_base:
+                            # Ajout des résistances surface int/ext pour la fenêtre
+                            R_fen = (1 / k_fen_base) + 0.215  # 0.025+0.03+0.16 = 0.215
+                            U_fen = 1 / R_fen if R_fen != 0 else 0.0
+                            perte_fen = U_fen * fen_area
+                    # Portes
+                    perte_por = 0.0
+                    por_area = st.session_state.get(f"area_door_{key}", 0.0)
+                    if por_area and por_area > 0:
+                        contact = st.session_state.get(f"door_contact_{key}")
+                        type_por = st.session_state.get(f"door_type_{key}")
+                        k_por = get_k_door(contact, type_por)
+                        if k_por:
+                            perte_por = k_por * por_area
+                    # Somme des pertes orientation
+                    perte_orient = perte_mur + perte_fen + perte_por
+                    resultats.append({"Élément": label, "Déperdition (W/°C)": perte_orient})
+                    total_transmissions += perte_orient
+    # Mur vers local non chauffé
+    perte_local_nc = 0.0
+    if st.session_state.use_local_nc and st.session_state.wall_local_nc and st.session_state.wall_local_nc != "(choisir)":
+        nom_paroi_nc = st.session_state.wall_local_nc
+        if nom_paroi_nc in st.session_state.walls:
+            U_nc = st.session_state.walls[nom_paroi_nc]['U']
+            area_nc = st.session_state.area_local_nc
+            Tint = st.session_state.Tint_local_nc
+            Tesp = st.session_state.Tesp_local_nc
+            Text = st.session_state.Text_local_nc if st.session_state.Text_local_nc is not None else 0.0
+            # Calcul du facteur Tau
+            Tau = (Tint - Tesp) / (Tint - Text) if (Tint - Text) != 0 else 0.0
+            perte_local_nc = Tau * U_nc * area_nc
+            resultats.append({"Élément": "Mur local non chauffé", "Déperdition (W/°C)": perte_local_nc})
+            total_transmissions += perte_local_nc
+    # Calcul des déperditions par renouvellement d'air (infiltrations)
+    debit_total = 0.0
+    for typ, n, surf in st.session_state.infiltration_entries:
+        P0 = P0_vals.get(typ, 0.0)
+        debit_total += n * P0 * surf
+    qv = 0.6 * st.session_state.volume
+    perte_air = 0.34 * (debit_total + qv)
+    resultats.append({"Élément": "Renouvellement d'air", "Déperdition (W/°C)": perte_air})
+    # Total général
+    total = total_transmissions + perte_air
+    resultats.append({"Élément": "Total", "Déperdition (W/°C)": total})
+    # Affichage du tableau de résultats
+    df_res = pd.DataFrame(resultats)
+    st.table(df_res.set_index("Élément").style.format({"Déperdition (W/°C)": "{:.3f}"}))
+    # Calcul et affichage de la puissance de chauffage requise
+    if st.session_state.zone:
+        t_ext = get_temperature_ext(st.session_state.zone, float(st.session_state.altitude))
     else:
-        st.markdown("Indiquez, pour chaque orientation, les surfaces des parois et ouvertures correspondantes, ainsi que les types de parois utilisées.")
-        paroi_names = list(st.session_state.parois.keys())
-        for ori in ["north","south","east","west"]:
-            key = f"{ori}_wall_type"
-            if st.session_state[key] is None:
-                st.session_state[key] = paroi_names[0] if paroi_names else None
-        for ori in ["floor","roof"]:
-            key = f"{ori}_type"
-            if st.session_state[key] is None:
-                st.session_state[key] = paroi_names[0] if paroi_names else None
-
-        col_left, col_right = st.columns(2)
-        with col_left:
-            st.subheader("Nord")
-            st.selectbox("Type de mur nord", paroi_names, key="north_wall_type")
-            st.number_input("Surface du mur nord (m²)", min_value=0.0, key="north_wall_area")
-            st.selectbox("Type de fenêtres (nord)", list(fenetres_options.keys()), key="north_window_type")
-            st.number_input("Surface des fenêtres nord (m²)", min_value=0.0, key="north_window_area")
-            st.selectbox("Type de porte (nord)", list(portes_options.keys()), key="north_door_type")
-            st.number_input("Surface des portes nord (m²)", min_value=0.0, key="north_door_area")
-            st.subheader("Sud")
-            st.selectbox("Type de mur sud", paroi_names, key="south_wall_type")
-            st.number_input("Surface du mur sud (m²)", min_value=0.0, key="south_wall_area")
-            st.selectbox("Type de fenêtres (sud)", list(fenetres_options.keys()), key="south_window_type")
-            st.number_input("Surface des fenêtres sud (m²)", min_value=0.0, key="south_window_area")
-            st.selectbox("Type de porte (sud)", list(portes_options.keys()), key="south_door_type")
-            st.number_input("Surface des portes sud (m²)", min_value=0.0, key="south_door_area")
-        with col_right:
-            st.subheader("Est")
-            st.selectbox("Type de mur est", paroi_names, key="east_wall_type")
-            st.number_input("Surface du mur est (m²)", min_value=0.0, key="east_wall_area")
-            st.selectbox("Type de fenêtres (est)", list(fenetres_options.keys()), key="east_window_type")
-            st.number_input("Surface des fenêtres est (m²)", min_value=0.0, key="east_window_area")
-            st.selectbox("Type de porte (est)", list(portes_options.keys()), key="east_door_type")
-            st.number_input("Surface des portes est (m²)", min_value=0.0, key="east_door_area")
-            st.subheader("Ouest")
-            st.selectbox("Type de mur ouest", paroi_names, key="west_wall_type")
-            st.number_input("Surface du mur ouest (m²)", min_value=0.0, key="west_wall_area")
-            st.selectbox("Type de fenêtres (ouest)", list(fenetres_options.keys()), key="west_window_type")
-            st.number_input("Surface des fenêtres ouest (m²)", min_value=0.0, key="west_window_area")
-            st.selectbox("Type de porte (ouest)", list(portes_options.keys()), key="west_door_type")
-            st.number_input("Surface des portes ouest (m²)", min_value=0.0, key="west_door_area")
-        st.subheader("Plancher bas")
-        st.selectbox("Type de plancher bas", paroi_names, key="floor_type")
-        st.number_input("Surface du plancher bas (m²)", min_value=0.0, key="floor_area")
-        st.subheader("Toiture")
-        st.selectbox("Type de toiture", paroi_names, key="roof_type")
-        st.number_input("Surface de la toiture (m²)", min_value=0.0, key="roof_area")
-    col1, col2 = st.columns([1,1])
-    with col1:
-        if st.button("Retour"):
-            st.session_state.current_page = "Définition des parois"
-    with col2:
-        if st.button("Suivant"):
-            if not st.session_state.parois:
-                st.session_state.current_page = "Définition des parois"
-            else:
-                st.session_state.current_page = "Résultats"
-
-elif st.session_state.current_page == "Résultats":
-    st.title("Résultats du calcul thermique")
-    if not st.session_state.parois:
-        st.error("Aucune paroi définie. Veuillez revenir aux étapes précédentes.")
+        t_ext = None
+    st.number_input("Température intérieure de calcul (°C)", value=st.session_state.temperature_int, key="temperature_int")
+    if t_ext is None:
+        t_ext = 0.0
+        st.number_input("Température extérieure de calcul (°C)", value=t_ext, key="ext_temp_input")
+        t_ext = st.session_state.ext_temp_input
     else:
-        zone = st.session_state.zone
-        altitude = st.session_state.altitude
-        T_ext = get_temperature_exterieure(zone, altitude) if zone else None
-        if T_ext is None:
-            st.warning("Zone climatique non définie correctement.")
-            T_ext = 0.0
-        T_int = 20.0  # Température intérieure de consigne (°C)
-        deltaT = T_int - T_ext
-        Rsi_wall = 0.13
-        Rse_wall = 0.04
-        Rsi_roof = 0.10
-        Rse_roof = 0.04
-        Rsi_floor = 0.17
-        Rse_floor = 0.0
-        total_loss = 0.0
-        sum_wall_loss = 0.0
-        sum_window_loss = 0.0
-        sum_door_loss = 0.0
-        roof_loss = 0.0
-        floor_loss = 0.0
-        orientation_results = []
-        orientations = [("Nord", "north"), ("Est", "east"), ("Sud", "south"), ("Ouest", "west")]
-        for (label, ori) in orientations:
-            wall_type = st.session_state[f"{ori}_wall_type"]
-            wall_area = st.session_state[f"{ori}_wall_area"]
-            window_type = st.session_state[f"{ori}_window_type"]
-            window_area = st.session_state[f"{ori}_window_area"]
-            door_type = st.session_state[f"{ori}_door_type"]
-            door_area = st.session_state[f"{ori}_door_area"]
-            R_layers = st.session_state.parois[wall_type]["R"] if wall_type in st.session_state.parois else 0.0
-            U_wall = 1.0 / (R_layers + Rsi_wall + Rse_wall) if R_layers > 0 else 0.0
-            wall_loss = U_wall * wall_area * deltaT
-            U_window = fenetres_options.get(window_type, 0.0)
-            window_loss = U_window * window_area * deltaT
-            U_door = portes_options.get(door_type, 0.0)
-            door_loss = U_door * door_area * deltaT
-            sum_wall_loss += wall_loss
-            sum_window_loss += window_loss
-            sum_door_loss += door_loss
-            orientation_total = wall_loss + window_loss + door_loss
-            total_loss += orientation_total
-            orientation_results.append({
-                "Orientation": label,
-                "Pertes parois opaques (W)": wall_loss,
-                "Pertes fenêtres (W)": window_loss,
-                "Pertes portes (W)": door_loss,
-                "Total (W)": orientation_total
-            })
-        floor_type = st.session_state["floor_type"]
-        floor_area = st.session_state["floor_area"]
-        R_layers_floor = st.session_state.parois[floor_type]["R"] if floor_type in st.session_state.parois else 0.0
-        U_floor = 1.0 / (R_layers_floor + Rsi_floor + Rse_floor) if R_layers_floor > 0 else 0.0
-        floor_loss = U_floor * floor_area * deltaT
-        total_loss += floor_loss
-        orientation_results.append({
-            "Orientation": "Plancher bas",
-            "Pertes parois opaques (W)": floor_loss,
-            "Pertes fenêtres (W)": 0.0,
-            "Pertes portes (W)": 0.0,
-            "Total (W)": floor_loss
-        })
-        roof_type = st.session_state["roof_type"]
-        roof_area = st.session_state["roof_area"]
-        R_layers_roof = st.session_state.parois[roof_type]["R"] if roof_type in st.session_state.parois else 0.0
-        U_roof = 1.0 / (R_layers_roof + Rsi_roof + Rse_roof) if R_layers_roof > 0 else 0.0
-        roof_loss = U_roof * roof_area * deltaT
-        total_loss += roof_loss
-        orientation_results.append({
-            "Orientation": "Toiture",
-            "Pertes parois opaques (W)": roof_loss,
-            "Pertes fenêtres (W)": 0.0,
-            "Pertes portes (W)": 0.0,
-            "Total (W)": roof_loss
-        })
-        df_orient = pd.DataFrame(orientation_results)
-        df_orient.set_index("Orientation", inplace=True)
-        st.subheader("Déperditions par orientation")
-        st.table(df_orient.style.format("{:.1f}"))
-        elements_data = [
-            ["Murs extérieurs (verticals)", sum_wall_loss],
-            ["Fenêtres", sum_window_loss],
-            ["Portes", sum_door_loss],
-            ["Plancher bas", floor_loss],
-            ["Toiture", roof_loss],
-            ["Total général", total_loss]
-        ]
-        df_elem = pd.DataFrame(elements_data, columns=["Élément", "Déperdition (W)"])
-        df_elem.set_index("Élément", inplace=True)
-        st.subheader("Déperditions par type d'élément")
-        st.table(df_elem.style.format("{:.1f}"))
-        st.subheader("Diagramme: Déperditions par orientation")
-        st.bar_chart(df_orient["Total (W)"])
-        st.subheader("Diagramme: Répartition par type d'élément")
-        labels = ["Murs", "Fenêtres", "Portes", "Plancher", "Toiture"]
-        sizes = [sum_wall_loss, sum_window_loss, sum_door_loss, floor_loss, roof_loss]
-        fig, ax = plt.subplots()
-        ax.pie(sizes, labels=labels, autopct='%1.1f%%')
-        ax.axis('equal')
-        st.pyplot(fig)
-        st.subheader("Export des résultats")
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["Informations du projet"])
-        writer.writerow(["Nom du projet", st.session_state.project_name])
-        writer.writerow(["Wilaya", st.session_state.wilaya_selected])
-        writer.writerow(["Zone climatique", st.session_state.zone])
-        writer.writerow(["Altitude (m)", st.session_state.altitude])
-        writer.writerow(["Type de bâtiment", st.session_state.building_type])
-        writer.writerow(["Site d'implantation", st.session_state.site])
-        writer.writerow([])
-        writer.writerow(["Parois définies"])
-        writer.writerow(["Nom de paroi", "R (m².K/W)", "U approximatif (W/m².K)", "Composition (couches)"])
-        for pname, pdata in st.session_state.parois.items():
-            Rval = pdata["R"]
-            Uapp = 1.0/(Rval + 0.17) if Rval > 0 else 0.0
-            comp = " + ".join([f"{mat} ({ep:.3f} m)" for mat, ep in pdata["layers"]])
-            writer.writerow([pname, f"{Rval:.3f}", f"{Uapp:.3f}", comp])
-        writer.writerow([])
-        writer.writerow(["Surfaces par orientation et types"])
-        writer.writerow(["Orientation", "Type de paroi", "Surface paroi (m²)", "Type de fenêtres", "Surface fenêtres (m²)", "Type de portes", "Surface portes (m²)"])
-        for label, ori in [("Nord","north"), ("Est","east"), ("Sud","south"), ("Ouest","west")]:
-            writer.writerow([label,
-                             st.session_state[f"{ori}_wall_type"], f'{st.session_state[f"{ori}_wall_area"]:.2f}',
-                             st.session_state[f"{ori}_window_type"], f'{st.session_state[f"{ori}_window_area"]:.2f}',
-                             st.session_state[f"{ori}_door_type"], f'{st.session_state[f"{ori}_door_area"]:.2f}'])
-        writer.writerow(["Plancher bas",
-                         st.session_state["floor_type"], f'{st.session_state["floor_area"]:.2f}',
-                         "", "", "", ""])
-        writer.writerow(["Toiture",
-                         st.session_state["roof_type"], f'{st.session_state["roof_area"]:.2f}',
-                         "", "", "", ""])
-        writer.writerow([])
-        writer.writerow(["Déperditions par orientation (W)"])
-        writer.writerow(["Orientation", "Parois opaques", "Fenêtres", "Portes", "Total"])
-        for row in orientation_results:
-            writer.writerow([row["Orientation"],
-                             f'{row["Pertes parois opaques (W)"]:.1f}',
-                             f'{row["Pertes fenêtres (W)"]:.1f}',
-                             f'{row["Pertes portes (W)"]:.1f}',
-                             f'{row["Total (W)"]:.1f}'])
-        writer.writerow(["Total", f"{sum_wall_loss:.1f}", f"{sum_window_loss:.1f}", f"{sum_door_loss:.1f}", f"{total_loss:.1f}"])
-        writer.writerow([])
-        writer.writerow(["Déperditions par type d'élément (W)"])
-        writer.writerow(["Élément", "Déperdition"])
-        writer.writerow(["Murs extérieurs", f"{sum_wall_loss:.1f}"])
-        writer.writerow(["Fenêtres", f"{sum_window_loss:.1f}"])
-        writer.writerow(["Portes", f"{sum_door_loss:.1f}"])
-        writer.writerow(["Plancher bas", f"{floor_loss:.1f}"])
-        writer.writerow(["Toiture", f"{roof_loss:.1f}"])
-        writer.writerow(["Total général", f"{total_loss:.1f}"])
-        csv_data = output.getvalue()
-        st.download_button(label="📥 Télécharger les résultats (CSV)", data=csv_data.encode('utf-8'), file_name="resultats_calcul_thermique.csv", mime="text/csv")
+        st.write(f"Température extérieure de référence : **{t_ext}°C** (Zone {st.session_state.zone})")
+    T_int = st.session_state.temperature_int
+    T_ext = t_ext if t_ext is not None else 0.0
+    Q_w = total * (T_int - T_ext)  # en W
+    st.write(f"**Puissance de chauffage estimée :** {Q_w/1000:.2f} kW " +
+             f"(ΔT = {T_int - T_ext:.1f}°C)")
+    # Export CSV des résultats
+    csv = df_res.to_csv(index=False, float_format="%.3f")
+    st.download_button("💾 Exporter les résultats en CSV", data=csv, file_name="deperditions_thermiques.csv", mime="text/csv")
+    # Diagramme en barres des déperditions par catégorie (hors total)
+    df_chart = df_res[df_res["Élément"] != "Total"].set_index("Élément")
+    st.bar_chart(df_chart)
+    # Bouton pour réinitialiser/recommencer
+    if st.button("↻ Recommencer la saisie"):
+        st.session_state.page = 0
